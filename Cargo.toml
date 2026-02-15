@@ -1,0 +1,40 @@
+[package]
+name = "mash-ssh"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matteo Bigoi <bigo@crisidev.org>"]
+description = "Control multiple SSH sessions from a single interactive shell"
+license = "MIT"
+repository = "https://github.com/crisidev/mash"
+homepage = "https://github.com/crisidev/mash"
+readme = "README.md"
+keywords = ["ssh", "multiplexer", "shell", "remote", "parallel"]
+categories = ["command-line-utilities", "network-programming"]
+rust-version = "1.82"
+
+[[bin]]
+name = "mash"
+path = "src/main.rs"
+
+[dependencies]
+argh = "0.1"
+color-eyre = "0.6"
+etcetera = "0.11"
+glob = "0.3"
+nix = { version = "0.31", features = [
+    "term",
+    "signal",
+    "process",
+    "fs",
+    "resource",
+    "ioctl",
+] }
+owo-colors = "4"
+rand = "0.10"
+regex = "1"
+rpassword = "7"
+rustyline = "17"
+shellexpand = "3"
+shell-words = "1"
+terminal_size = "0.4"
+tokio = { version = "1", features = ["full"] }
