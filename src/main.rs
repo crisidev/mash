@@ -16,12 +16,12 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 use std::sync::{Arc, RwLock};
 
-use color_eyre::eyre::{self, bail, Context};
+use color_eyre::eyre::{self, Context, bail};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use owo_colors::OwoColorize;
-use tokio::io::unix::AsyncFd;
 use tokio::io::AsyncReadExt;
+use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 
 use cli::parse_args;
@@ -163,11 +163,7 @@ async fn main() -> eyre::Result<()> {
         if !stdin_data.is_empty() && !stdin_data.ends_with('\n') {
             stdin_data.push('\n');
         }
-        if stdin_data.is_empty() {
-            None
-        } else {
-            Some(stdin_data)
-        }
+        if stdin_data.is_empty() { None } else { Some(stdin_data) }
     } else {
         args.command.clone()
     };

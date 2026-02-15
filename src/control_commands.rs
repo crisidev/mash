@@ -371,11 +371,7 @@ async fn do_reconnect(
         .map(|&i| {
             let h = shells[i].hostname.clone();
             let p = shells[i].port.clone();
-            if p == "22" {
-                h
-            } else {
-                format!("{}:{}", h, p)
-            }
+            if p == "22" { h } else { format!("{}:{}", h, p) }
         })
         .collect();
 
