@@ -21,6 +21,7 @@
         in
         {
           mash = naersk'.buildPackage {
+            pname = "mash";
             buildInputs = with final; [
               perl
               openssl

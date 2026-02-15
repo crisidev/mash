@@ -40,6 +40,10 @@ pub(crate) struct Args {
     #[argh(switch)]
     pub(crate) debug: bool,
 
+    /// print version information and exit
+    #[argh(switch)]
+    pub(crate) version: bool,
+
     /// hostnames to connect to
     #[argh(positional)]
     pub(crate) host_names: Vec<String>,
@@ -47,6 +51,11 @@ pub(crate) struct Args {
 
 pub(crate) fn parse_args() -> Args {
     let mut args: Args = argh::from_env();
+
+    if args.version {
+        println!("mash {}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
 
     // Read hosts from files
     for filename in &args.hosts_filenames {
