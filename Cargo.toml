@@ -1,7 +1,7 @@
 [package]
 name = "mash-ssh"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Matteo Bigoi <bigo@crisidev.org>"]
 description = "Control multiple SSH sessions from a single interactive shell"
 license = "MIT"
@@ -10,7 +10,7 @@ homepage = "https://github.com/crisidev/mash"
 readme = "README.md"
 keywords = ["ssh", "multiplexer", "shell", "remote", "parallel"]
 categories = ["command-line-utilities", "network-programming"]
-rust-version = "1.82"
+rust-version = "1.85"
 
 [[bin]]
 name = "mash"
