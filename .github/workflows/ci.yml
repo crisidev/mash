@@ -49,3 +49,11 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
+
+  nix:
+    name: Nix Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix build

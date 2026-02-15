@@ -25,6 +25,16 @@ mash connects to multiple remote hosts simultaneously and lets you type commands
 cargo install mash-ssh
 ```
 
+### With Nix
+
+```sh
+# Run directly
+nix run github:crisidev/mash
+
+# Install into profile
+nix profile install github:crisidev/mash
+```
+
 ### From source
 
 ```sh
