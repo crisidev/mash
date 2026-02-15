@@ -12,25 +12,40 @@
       naersk,
       nixpkgs,
     }:
-    flake-utils.lib.eachDefaultSystem (
+    {
+      # Top-level, system-independent overlay
+      overlays.default =
+        final: _:
+        let
+          naersk' = final.callPackage naersk { };
+        in
+        {
+          mash = naersk'.buildPackage {
+            buildInputs = with final; [
+              perl
+              openssl
+            ];
+            nativeBuildInputs = with final; [
+              perl
+              openssl
+            ];
+            src = self;
+          };
+        };
+    }
+    // flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = (import nixpkgs) {
+        pkgs = import nixpkgs {
           inherit system;
+          overlays = [ self.overlays.default ];
         };
-
-        naersk' = pkgs.callPackage naersk { };
-        mash = naersk'.buildPackage {
-          buildInputs = with pkgs; [ perl openssl ];
-          nativeBuildInputs = with pkgs; [ perl openssl ];
-          src = ./.;
-        };
-
-      in {
+      in
+      {
         # For `nix build` & `nix run`:
-        defaultPackage = mash;
+        defaultPackage = pkgs.mash;
 
-        # For `nix develop` (optional, can be skipped):
+        # For `nix develop`:
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             cargo-audit
@@ -39,11 +54,6 @@
             llvmPackages_19.libllvm
             rust-analyzer
           ];
-        };
-
-        # Overlay for package usage in other Nix configurations
-        overlay = _: _: {
-          inherit mash;
         };
       }
     );
