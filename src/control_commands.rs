@@ -138,7 +138,7 @@ const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "export_vars",
         args: "",
-        description: "Set POLYSH_RANK/NAME/NR_SHELLS on each shell",
+        description: "Set MASH_RANK/NAME/NR_SHELLS on each shell",
     },
     CommandInfo {
         name: "set_log",
@@ -581,7 +581,7 @@ async fn do_export_vars(mgr: &mut ShellManager) -> CmdResult {
     for (id, hostname, display_name) in &shells {
         if let Some(shell) = mgr.get_shell_mut(*id) {
             let cmd = format!(
-                "export POLYSH_RANK={} POLYSH_NAME={} POLYSH_DISPLAY_NAME={}\n",
+                "export MASH_RANK={} MASH_NAME={} MASH_DISPLAY_NAME={}\n",
                 rank,
                 shell_words::quote(hostname),
                 shell_words::quote(display_name),
@@ -593,7 +593,7 @@ async fn do_export_vars(mgr: &mut ShellManager) -> CmdResult {
 
     for (id, _, _) in &shells {
         if let Some(shell) = mgr.get_shell_mut(*id) {
-            let cmd = format!("export POLYSH_NR_SHELLS={}\n", total);
+            let cmd = format!("export MASH_NR_SHELLS={}\n", total);
             shell.dispatch_command(cmd.as_bytes()).await;
         }
     }

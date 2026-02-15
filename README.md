@@ -107,7 +107,7 @@ mash [● 3] ❯❯❯ !ls             # run locally
 | `:chdir [PATH]`             | Change local working directory                    |
 | `:hide_password`            | Disable echo/debug/logging for password entry     |
 | `:set_debug y\|n [PATTERN]` | Toggle debug output per shell                     |
-| `:export_vars`              | Set POLYSH_RANK/NAME/NR_SHELLS on each shell      |
+| `:export_vars`              | Set MASH_RANK/NAME/NR_SHELLS on each shell      |
 | `:set_log [PATH]`           | Set or disable the log file                       |
 | `:show_read_buffer [PATTERN]` | Show buffered output from shell startup         |
 
