@@ -443,7 +443,10 @@ fn strip_newlines(data: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use std::os::fd::AsFd;
+
     use super::*;
+    use crate::console::Console;
 
     // --- trim_ascii_bytes tests ---
 
@@ -522,5 +525,155 @@ mod tests {
         assert_eq!(ShellState::Running.name(), "running");
         assert_eq!(ShellState::Terminated.name(), "terminated");
         assert_eq!(ShellState::Dead.name(), "dead");
+    }
+
+    // --- Helper to create a test shell backed by a pipe ---
+
+    fn make_test_shell() -> (RemoteShell, std::os::fd::OwnedFd) {
+        let (read_fd, write_fd) = nix::unistd::pipe().unwrap();
+        let shell = RemoteShell::new(
+            ShellId(0),
+            "testhost".into(),
+            "22".into(),
+            "testhost".into(),
+            1,
+            write_fd,
+            false,
+            None,
+            None,
+            0,
+            false,
+        );
+        (shell, read_fd)
+    }
+
+    // --- print_unfinished_line tests ---
+
+    #[tokio::test]
+    async fn test_print_unfinished_line_flushes_running_buffer() {
+        let (mut shell, _read_fd) = make_test_shell();
+        let mut console = Console::new(false, None).await;
+
+        shell.state = ShellState::Running;
+        shell.read_buffer = b"Do you want to continue? [Y/n] ".to_vec();
+
+        shell.print_unfinished_line(&mut console, 8).await;
+
+        assert!(shell.read_buffer.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_print_unfinished_line_noop_when_idle() {
+        let (mut shell, _read_fd) = make_test_shell();
+        let mut console = Console::new(false, None).await;
+
+        shell.state = ShellState::Idle;
+        shell.read_buffer = b"some data".to_vec();
+
+        shell.print_unfinished_line(&mut console, 8).await;
+
+        assert_eq!(shell.read_buffer, b"some data");
+    }
+
+    #[tokio::test]
+    async fn test_print_unfinished_line_noop_when_buffer_empty() {
+        let (mut shell, _read_fd) = make_test_shell();
+        let mut console = Console::new(false, None).await;
+
+        shell.state = ShellState::Running;
+
+        shell.print_unfinished_line(&mut console, 8).await;
+
+        assert!(shell.read_buffer.is_empty());
+    }
+
+    // --- dispatch_command tests ---
+
+    #[tokio::test]
+    async fn test_dispatch_command_idle_to_running() {
+        let (mut shell, read_fd) = make_test_shell();
+
+        shell.state = ShellState::Idle;
+        shell.dispatch_command(b"sleep 5\n").await;
+
+        assert_eq!(shell.state, ShellState::Running);
+
+        let mut buf = [0u8; 64];
+        let n = nix::unistd::read(read_fd.as_fd(), &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"sleep 5\n");
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_command_forwards_while_running() {
+        let (mut shell, read_fd) = make_test_shell();
+
+        shell.state = ShellState::Running;
+        shell.dispatch_command(b"y\n").await;
+
+        // State stays Running
+        assert_eq!(shell.state, ShellState::Running);
+
+        let mut buf = [0u8; 64];
+        let n = nix::unistd::read(read_fd.as_fd(), &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"y\n");
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_command_ignored_when_dead() {
+        let (mut shell, read_fd) = make_test_shell();
+
+        shell.state = ShellState::Dead;
+        shell.dispatch_command(b"y\n").await;
+
+        assert_eq!(shell.state, ShellState::Dead);
+
+        // Set non-blocking to confirm nothing was written
+        let flags =
+            nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
+        let mut oflags = nix::fcntl::OFlag::from_bits_truncate(flags);
+        oflags.insert(nix::fcntl::OFlag::O_NONBLOCK);
+        nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_SETFL(oflags)).unwrap();
+
+        let mut buf = [0u8; 64];
+        assert!(nix::unistd::read(read_fd.as_fd(), &mut buf).is_err());
+    }
+
+    // --- write_to_pty tests (used for Ctrl-C forwarding) ---
+
+    #[test]
+    fn test_write_to_pty_sends_ctrl_c() {
+        let (read_fd, write_fd) = nix::unistd::pipe().unwrap();
+        let shell = RemoteShell::new(
+            ShellId(0), "h".into(), "22".into(), "h".into(),
+            1, write_fd, false, None, None, 0, false,
+        );
+
+        shell.write_to_pty(b"\x03");
+
+        let mut buf = [0u8; 64];
+        let n = nix::unistd::read(read_fd.as_fd(), &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"\x03");
+    }
+
+    #[test]
+    fn test_dispatch_write_disabled_shell() {
+        let (read_fd, write_fd) = nix::unistd::pipe().unwrap();
+        let mut shell = RemoteShell::new(
+            ShellId(0), "h".into(), "22".into(), "h".into(),
+            1, write_fd, false, None, None, 0, false,
+        );
+
+        shell.state = ShellState::Running;
+        shell.enabled = false;
+        assert!(!shell.dispatch_write(b"test"));
+
+        let flags =
+            nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
+        let mut oflags = nix::fcntl::OFlag::from_bits_truncate(flags);
+        oflags.insert(nix::fcntl::OFlag::O_NONBLOCK);
+        nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_SETFL(oflags)).unwrap();
+
+        let mut buf = [0u8; 64];
+        assert!(nix::unistd::read(read_fd.as_fd(), &mut buf).is_err());
     }
 }

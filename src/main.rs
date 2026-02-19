@@ -13,8 +13,8 @@ mod signals;
 
 use std::io::IsTerminal;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
-
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use color_eyre::eyre::{self, Context, bail};
 use nix::sys::signal::{self, Signal};
@@ -23,6 +23,7 @@ use owo_colors::OwoColorize;
 use tokio::io::AsyncReadExt;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 
 use cli::parse_args;
 use console::Console;
@@ -262,6 +263,8 @@ async fn main() -> eyre::Result<()> {
 
     let mut input_requested = false;
     let mut next_signal: Option<SignalEvent> = None;
+    let mut drain_deadline: Option<Instant> = None;
+    const DRAIN_TIMEOUT: Duration = Duration::from_millis(200);
 
     loop {
         // Handle pending signal
@@ -312,10 +315,12 @@ async fn main() -> eyre::Result<()> {
             break;
         }
 
-        // Request input when all shells idle
+        // Request input when all shells idle, or after a drain timeout while running
         if interactive && !input_requested {
             let (awaiting, _) = mgr.count_awaited_processes();
             if awaiting == 0 {
+                // All shells idle: flush and prompt immediately
+                drain_deadline = None;
                 let max_name_len = display_names.max_display_name_length;
                 for shell in mgr.all_shells_mut() {
                     shell.print_unfinished_line(&mut console, max_name_len).await;
@@ -329,6 +334,9 @@ async fn main() -> eyre::Result<()> {
                     let _ = tx.send(InputRequest::ReadLine { prompt }).await;
                     input_requested = true;
                 }
+            } else if drain_deadline.is_none() {
+                // Shells running, no timer yet: start drain timer
+                drain_deadline = Some(Instant::now() + DRAIN_TIMEOUT);
             }
         }
 
@@ -336,6 +344,10 @@ async fn main() -> eyre::Result<()> {
             Some(shell_evt) = shell_event_rx.recv() => {
                 match shell_evt {
                     ShellEvent::Data { id, data } => {
+                        // Reset drain timer: new data arrived, wait for output to settle
+                        if drain_deadline.is_some() {
+                            drain_deadline = Some(Instant::now() + DRAIN_TIMEOUT);
+                        }
                         let max_name_len = display_names.max_display_name_length;
                         let abort = args.abort_errors;
                         if let Some(shell) = mgr.get_shell_mut(id) {
@@ -349,6 +361,8 @@ async fn main() -> eyre::Result<()> {
                         }
                     }
                     ShellEvent::Closed { id, exit_code: code } => {
+                        // Shell state changed; let top-of-loop logic re-evaluate
+                        drain_deadline = None;
                         exit_code = std::cmp::max(exit_code, code);
                         let max_name_len = display_names.max_display_name_length;
                         if let Some(shell) = mgr.get_shell_mut(id) {
@@ -447,12 +461,36 @@ async fn main() -> eyre::Result<()> {
                             }
                         }
                         InputEvent::Eof => break,
-                        InputEvent::Interrupted => {}
+                        InputEvent::Interrupted => {
+                            // Forward Ctrl-C to running shells
+                            for shell in mgr.all_shells_mut() {
+                                if shell.enabled && shell.state == ShellState::Running {
+                                    shell.write_to_pty(b"\x03");
+                                }
+                            }
+                        }
                     }
                 }
             }
             Some(sig) = signal_rx.recv() => {
                 next_signal = Some(sig);
+            }
+            _ = tokio::time::sleep(DRAIN_TIMEOUT), if drain_deadline.is_some() && !input_requested => {
+                // Drain timer fired: flush partial output and show prompt
+                drain_deadline = None;
+                let max_name_len = display_names.max_display_name_length;
+                for shell in mgr.all_shells_mut() {
+                    shell.print_unfinished_line(&mut console, max_name_len).await;
+                }
+
+                let (idle, running, pending, dead, disabled) = mgr.count_by_state();
+                let prompt = build_prompt(idle, running, pending, dead, disabled, use_color);
+                let visible = build_prompt(idle, running, pending, dead, disabled, false);
+                console.set_last_status_length(visible.len());
+                if let Some(ref tx) = input_req_tx {
+                    let _ = tx.send(InputRequest::ReadLine { prompt }).await;
+                    input_requested = true;
+                }
             }
             else => break,
         }
