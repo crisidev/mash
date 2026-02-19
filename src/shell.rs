@@ -628,8 +628,7 @@ mod tests {
         assert_eq!(shell.state, ShellState::Dead);
 
         // Set non-blocking to confirm nothing was written
-        let flags =
-            nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
+        let flags = nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
         let mut oflags = nix::fcntl::OFlag::from_bits_truncate(flags);
         oflags.insert(nix::fcntl::OFlag::O_NONBLOCK);
         nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_SETFL(oflags)).unwrap();
@@ -644,8 +643,17 @@ mod tests {
     fn test_write_to_pty_sends_ctrl_c() {
         let (read_fd, write_fd) = nix::unistd::pipe().unwrap();
         let shell = RemoteShell::new(
-            ShellId(0), "h".into(), "22".into(), "h".into(),
-            1, write_fd, false, None, None, 0, false,
+            ShellId(0),
+            "h".into(),
+            "22".into(),
+            "h".into(),
+            1,
+            write_fd,
+            false,
+            None,
+            None,
+            0,
+            false,
         );
 
         shell.write_to_pty(b"\x03");
@@ -659,16 +667,24 @@ mod tests {
     fn test_dispatch_write_disabled_shell() {
         let (read_fd, write_fd) = nix::unistd::pipe().unwrap();
         let mut shell = RemoteShell::new(
-            ShellId(0), "h".into(), "22".into(), "h".into(),
-            1, write_fd, false, None, None, 0, false,
+            ShellId(0),
+            "h".into(),
+            "22".into(),
+            "h".into(),
+            1,
+            write_fd,
+            false,
+            None,
+            None,
+            0,
+            false,
         );
 
         shell.state = ShellState::Running;
         shell.enabled = false;
         assert!(!shell.dispatch_write(b"test"));
 
-        let flags =
-            nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
+        let flags = nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL).unwrap();
         let mut oflags = nix::fcntl::OFlag::from_bits_truncate(flags);
         oflags.insert(nix::fcntl::OFlag::O_NONBLOCK);
         nix::fcntl::fcntl(read_fd.as_fd(), nix::fcntl::FcntlArg::F_SETFL(oflags)).unwrap();
