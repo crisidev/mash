@@ -1,6 +1,6 @@
 [package]
 name = "mash-ssh"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 authors = ["Matteo Bigoi <bigo@crisidev.org>"]
 description = "Control multiple SSH sessions from a single interactive shell"
