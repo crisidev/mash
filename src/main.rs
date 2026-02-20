@@ -264,6 +264,7 @@ async fn main() -> eyre::Result<()> {
     let mut input_requested = false;
     let mut next_signal: Option<SignalEvent> = None;
     let mut drain_deadline: Option<Instant> = None;
+    let mut drain_flushed = false;
     const DRAIN_TIMEOUT: Duration = Duration::from_millis(200);
 
     loop {
@@ -321,6 +322,7 @@ async fn main() -> eyre::Result<()> {
             if awaiting == 0 {
                 // All shells idle: flush and prompt immediately
                 drain_deadline = None;
+                drain_flushed = false;
                 let max_name_len = display_names.max_display_name_length;
                 for shell in mgr.all_shells_mut() {
                     shell.print_unfinished_line(&mut console, max_name_len).await;
@@ -347,6 +349,7 @@ async fn main() -> eyre::Result<()> {
                         // Reset drain timer: new data arrived, wait for output to settle
                         if drain_deadline.is_some() {
                             drain_deadline = Some(Instant::now() + DRAIN_TIMEOUT);
+                            drain_flushed = false;
                         }
                         let max_name_len = display_names.max_display_name_length;
                         let abort = args.abort_errors;
@@ -476,20 +479,27 @@ async fn main() -> eyre::Result<()> {
                 next_signal = Some(sig);
             }
             _ = tokio::time::sleep(DRAIN_TIMEOUT), if drain_deadline.is_some() && !input_requested => {
-                // Drain timer fired: flush partial output and show prompt
-                drain_deadline = None;
                 let max_name_len = display_names.max_display_name_length;
                 for shell in mgr.all_shells_mut() {
                     shell.print_unfinished_line(&mut console, max_name_len).await;
                 }
 
-                let (idle, running, pending, dead, disabled) = mgr.count_by_state();
-                let prompt = build_prompt(idle, running, pending, dead, disabled, use_color);
-                let visible = build_prompt(idle, running, pending, dead, disabled, false);
-                console.set_last_status_length(visible.len());
-                if let Some(ref tx) = input_req_tx {
-                    let _ = tx.send(InputRequest::ReadLine { prompt }).await;
-                    input_requested = true;
+                if !drain_flushed {
+                    // Phase 1: flush only, re-arm for phase 2
+                    drain_flushed = true;
+                    drain_deadline = Some(Instant::now() + DRAIN_TIMEOUT);
+                } else {
+                    // Phase 2: flush + request readline
+                    drain_deadline = None;
+                    drain_flushed = false;
+                    let (idle, running, pending, dead, disabled) = mgr.count_by_state();
+                    let prompt = build_prompt(idle, running, pending, dead, disabled, use_color);
+                    let visible = build_prompt(idle, running, pending, dead, disabled, false);
+                    console.set_last_status_length(visible.len());
+                    if let Some(ref tx) = input_req_tx {
+                        let _ = tx.send(InputRequest::ReadLine { prompt }).await;
+                        input_requested = true;
+                    }
                 }
             }
             else => break,
